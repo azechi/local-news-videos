@@ -1,7 +1,8 @@
-use serde::{de::DeserializeOwned, Deserialize};
 use worker::*;
 
-
+mod fetch;
+mod playlist_items;
+mod videos;
 
 #[event(fetch)]
 async fn fetch(_req: Request, env: Env, _ctx: Context) -> Result<Response> {
@@ -11,7 +12,10 @@ async fn fetch(_req: Request, env: Env, _ctx: Context) -> Result<Response> {
 
     let api = build_api(&api_key);
 
-    let videos = get_video_ids(api).await;
+    let videos = playlist_items::get_video_ids(&api, "UULFxiRdfyH0FtFCRZTRfRsdsA").await;
+
+    let duration = videos::get_duration(&api, &videos.join(",")).await;
+    console_log!("{:#?}", duration);
 
     let dest = Url::parse_with_params(
         "https://www.youtube-nocookie.com/embed",
@@ -25,47 +29,6 @@ async fn fetch(_req: Request, env: Env, _ctx: Context) -> Result<Response> {
     Response::redirect_with_status(dest, 303)
 }
 
-async fn fetch<T>(req: Request) -> T 
-    where 
-        T: DeserializeOwned
-{
-    let mut res = Fetch::Request(req).send().await.unwrap();
-    res.json::<T>().await.unwrap()
-}
-
-async fn get_video_ids(api: impl Fn(&str, &[(&str, &str)]) -> Request ) -> Vec<String> {
-    
-    #[derive(Deserialize, Debug)]
-    #[serde(rename_all = "camelCase")]
-    struct ContentDetails {
-        video_id: String,
-    }
-    
-    #[derive(Deserialize, Debug)]
-    #[serde(rename_all = "camelCase")]
-    struct PlayListItem {
-        content_details: ContentDetails,
-    }
-    
-    #[derive(Deserialize, Debug)]
-    #[serde(rename_all = "camelCase")]
-    struct PlayListItems {
-        items: Vec<PlayListItem>,
-    }
-
-    let dat = fetch::<PlayListItems>(
-        api(
-            "playlistItems",
-            &[
-                ("part", "contentDetails,snippet,id,status"),
-                ("playlistId", "UULFxiRdfyH0FtFCRZTRfRsdsA"),
-            ],
-        )
-    ).await;
-
-    dat.items.into_iter().map(|x| x.content_details.video_id).collect()
-
-}
 
 fn build_api(api_key: &str) -> impl Fn(&str, &[(&str, &str)]) -> Request
  {
