@@ -4,3 +4,6 @@ compatibility_date = "2024-08-07"
 
 [build]
 command = "cargo install -q worker-build && worker-build --release"
+
+[vars]
+#GOOGLE_API_KEY="GOOGLE_API_KEY"
