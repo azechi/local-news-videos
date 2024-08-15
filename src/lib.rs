@@ -1,24 +1,7 @@
+use serde::{de::DeserializeOwned, Deserialize};
 use worker::*;
 
-use serde::Deserialize;
 
-#[derive(Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-struct ContentDetails {
-    video_id: String,
-}
-
-#[derive(Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-struct PlayListItem {
-    content_details: ContentDetails,
-}
-
-#[derive(Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-struct PlayListItems {
-    items: Vec<PlayListItem>,
-}
 
 #[event(fetch)]
 async fn fetch(_req: Request, env: Env, _ctx: Context) -> Result<Response> {
@@ -26,31 +9,66 @@ async fn fetch(_req: Request, env: Env, _ctx: Context) -> Result<Response> {
 
     let api_key = env.var("GOOGLE_API_KEY").unwrap().to_string();
 
-    let build = build(&api_key);
+    let api = build_api(&api_key);
 
-    let req = build(
-        "playlistItems",
+    let videos = get_video_ids(api).await;
+
+    let dest = Url::parse_with_params(
+        "https://www.youtube-nocookie.com/embed",
         &[
-            ("part", "contentDetails,snippet,id,status"),
-            ("playlistId", "UULFxiRdfyH0FtFCRZTRfRsdsA"),
-        ],
-    );
-    console_log!("{}", req.url().unwrap().as_str());
+            ("autoplay", "1"),
+            ("rel", "0"),
+            ("playlist", &videos.join(",")), 
+        ]
+    )?;
 
-    let mut res = Fetch::Request(req).send().await?;
-    let dat = res.json::<PlayListItems>().await?;
-    console_log!("{:#?}", dat.items[0].content_details.video_id);
-
-    //console_log!("{:#?} {}", res.headers(), res.status_code());
-
-    Response::empty()
-
-    //let dest = Url::parse("https://www.youtube.com/embed?playlist=lFRyJ_sQ350,zZSw5lvG_Wg,xA8rnCmyCJM&autoplay=1&rel=0")?;
-    //Response::redirect_with_status(dest, 303)
+    Response::redirect_with_status(dest, 303)
 }
 
-//fn build(api_key: &str) -> Box<dyn Fn(&str, &[(&str, &str)]) -> Request> {
-fn build(api_key: &str) -> impl Fn(&str, &[(&str, &str)]) -> Request {
+async fn fetch<T>(req: Request) -> T 
+    where 
+        T: DeserializeOwned
+{
+    let mut res = Fetch::Request(req).send().await.unwrap();
+    res.json::<T>().await.unwrap()
+}
+
+async fn get_video_ids(api: impl Fn(&str, &[(&str, &str)]) -> Request ) -> Vec<String> {
+    
+    #[derive(Deserialize, Debug)]
+    #[serde(rename_all = "camelCase")]
+    struct ContentDetails {
+        video_id: String,
+    }
+    
+    #[derive(Deserialize, Debug)]
+    #[serde(rename_all = "camelCase")]
+    struct PlayListItem {
+        content_details: ContentDetails,
+    }
+    
+    #[derive(Deserialize, Debug)]
+    #[serde(rename_all = "camelCase")]
+    struct PlayListItems {
+        items: Vec<PlayListItem>,
+    }
+
+    let dat = fetch::<PlayListItems>(
+        api(
+            "playlistItems",
+            &[
+                ("part", "contentDetails,snippet,id,status"),
+                ("playlistId", "UULFxiRdfyH0FtFCRZTRfRsdsA"),
+            ],
+        )
+    ).await;
+
+    dat.items.into_iter().map(|x| x.content_details.video_id).collect()
+
+}
+
+fn build_api(api_key: &str) -> impl Fn(&str, &[(&str, &str)]) -> Request
+ {
     let mut headers = Headers::new();
     headers.set("X-goog-api-key", api_key).unwrap();
     headers.set("Accept", "application/json").unwrap();
@@ -58,7 +76,8 @@ fn build(api_key: &str) -> impl Fn(&str, &[(&str, &str)]) -> Request {
 
     let base = Url::parse("https://youtube.googleapis.com/youtube/v3/").unwrap();
 
-    move |resource: &str, params: &[(&str, &str)]| -> Request {
+    let func = move |resource: &str, params: &[(&str, &str)]| -> Request
+     {
         let mut url = base.join(resource).unwrap();
         url.query_pairs_mut().extend_pairs(params).finish();
 
@@ -67,5 +86,7 @@ fn build(api_key: &str) -> impl Fn(&str, &[(&str, &str)]) -> Request {
             RequestInit::new().with_headers(headers.clone()),
         )
         .unwrap()
-    }
+    };
+
+    func
 }
