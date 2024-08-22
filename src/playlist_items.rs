@@ -1,4 +1,5 @@
 use crate::fetch::fetch;
+use chrono::FixedOffset;
 use serde::Deserialize;
 use worker::Request;
 
@@ -10,18 +11,32 @@ struct PlayListItems {
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-struct PlayListItem {
-    content_details: ContentDetails,
+pub struct PlayListItem {
+    pub content_details: ContentDetails,
+    pub snippet: Snippet,
 }
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-struct ContentDetails {
-    video_id: String,
+pub struct ContentDetails {
+    pub video_id: String,
 }
 
-pub async fn get_video_ids(api: &impl Fn(&str, &[(&str, &str)]) -> Request, playlist_id: &str) -> Vec<String> {
-    let dat = fetch::<PlayListItems>(api(
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct Snippet {
+    pub published_at: chrono::DateTime<FixedOffset>,
+}
+
+/*
+fn from_isostring<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<chrono::DateTime<FixedOffset>, D::Error> {
+    let s = String::deserialize(deserializer)?;
+    Ok(chrono::DateTime::parse_from_rfc3339(&s).unwrap())
+}
+*/
+
+pub async fn get_playlist_items(api: &impl Fn(&str, &[(&str, &str)]) -> Request, playlist_id: &str) -> Vec<PlayListItem> {
+    fetch::<PlayListItems>(api(
         "playlistItems",
         &[
             ("part", "contentDetails,snippet,id,status"),
@@ -29,10 +44,7 @@ pub async fn get_video_ids(api: &impl Fn(&str, &[(&str, &str)]) -> Request, play
             ("maxResults", "15")
         ],
     ))
-    .await;
-
-    dat.items
-        .into_iter()
-        .map(|x| x.content_details.video_id)
-        .collect()
+    .await
+    .items
 }
+
