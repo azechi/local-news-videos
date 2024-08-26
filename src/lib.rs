@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use worker::*;
 
 mod fetch;
@@ -36,27 +38,68 @@ async fn fetch(_req: Request, env: Env, _ctx: Context) -> Result<Response> {
         .into_iter()
         .flatten()
         .filter(|x| x.snippet.published_at > yesterday)
-        .take(20)
         .collect::<Vec<_>>();
 
-    videos.sort_by(|a, b| a.snippet.published_at.cmp(&b.snippet.published_at).reverse());
+    videos.sort_by(|a, b| b.snippet.published_at.cmp(&a.snippet.published_at));
 
-    //let duration = videos::get_duration(&api, &videos.iter().map(|x| x.content_details.video_id.clone()).collect::<Vec<_>>().join(",")).await;
-    //console_log!("{:#?}", duration);
+    let duration = videos::get_duration(&api, &videos.iter().take(50).map(|x| x.content_details.video_id.clone()).collect::<Vec<_>>().join(","))
+        .await
+        .into_iter()
+        .filter(|x| {
+            pred(x.content_details.duration.as_bytes(), 150)
+        })
+        .map(|x| x.id)
+        .collect::<HashSet<_>>();
 
-    let video_ids = &videos.iter().map(|x| x.content_details.video_id.clone()).collect::<Vec<_>>().join(",");
+    let video_ids = videos.into_iter()
+        .map(|x| x.content_details.video_id)
+        .filter(|x| duration.contains(x))
+        .collect::<Vec<_>>().join(",");
 
     let dest = Url::parse_with_params(
         "https://www.youtube-nocookie.com/embed",
         &[
             ("autoplay", "1"),
             ("rel", "0"),
-            ("playlist", video_ids), 
+            ("playlist", &video_ids), 
         ]
     )?;
 
 
     Response::redirect_with_status(dest, 303)
+}
+
+
+fn pred(s: &[u8], limit_seconds: usize) -> bool {
+    let Some((head, tail)) = s.split_first_chunk::<2>() else {
+        panic!("");
+    };
+
+    if head.ne(&[b'P', b'T']) {
+        panic!("");
+    }
+
+    let mut units = [(b'H', 60 * 60), (b'M', 60), (b'S', 1usize)].into_iter();
+
+    // TODO: 指定した秒数を超えたらfoldを中断したい try_fold
+    let seconds = tail.chunk_by(|a, _| a.is_ascii_digit())
+        .fold(0, |total, iter| {
+            let st = iter.iter().cloned().fold(0usize, |st, i| {
+                if i.is_ascii_digit() {
+                    (st * 10) + usize::from(i - b'0')
+                } else {
+                    units
+                        .find(|(x, _)| *x == i)
+                        .map(|(_, x)| x * st)
+                        .unwrap()
+                }
+            });
+
+            total + st
+        });
+    
+    console_log!("{:#?}", seconds);
+    seconds <= limit_seconds
 }
 
 
