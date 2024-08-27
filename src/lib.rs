@@ -45,9 +45,9 @@ async fn fetch(_req: Request, env: Env, _ctx: Context) -> Result<Response> {
     let duration = videos::get_duration(&api, &videos.iter().take(50).map(|x| x.content_details.video_id.clone()).collect::<Vec<_>>().join(","))
         .await
         .into_iter()
-        .filter(|x| {
-            pred(x.content_details.duration.as_bytes(), 150)
-        })
+        .filter(|x| x.content_details.duration.0 > 150)
+//            pred(x.content_details.duration.0.as_bytes(), 150)
+//        })
         .map(|x| x.id)
         .collect::<HashSet<_>>();
 
