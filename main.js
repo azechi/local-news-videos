@@ -1,12 +1,12 @@
 function doGet(e) {
 
   const ids = [...Iterator.from(main()).filter((item) => {
-    if(item.title.includes("ビシバシ天気")) {
+    if (item.title.includes("ビシバシ天気")) {
       item.duration = 0;
       item.publishedAt = new Date();
     }
     return item.duration <= 150;
-  })].sort((a,b) => b.publishedAt - a.publishedAt);
+  })].sort((a, b) => b.publishedAt - a.publishedAt);
 
   for (const i of ids) {
     Logger.log("%s %s %s", i.publishedAt, i.duration, i.title);
@@ -138,9 +138,13 @@ function parse_ISO8601DurationFormat(s) {
     return null;
   }
 
-  const hours = matches[1] ? parseInt(matches[1]) : 0;
-  const minutes = matches[2] ? parseInt(matches[2]) : 0;
-  const seconds = matches[3] ? parseInt(matches[3]) : 0;
+  /* 
+    https://developer.mozilla.org/ja/docs/Web/JavaScript/Reference/Global_Objects/parseInt
+    > parseInt は、入力文字列の中で、指定された radix で有効な数字ではない文字を見つけた場合、その文字とそれ以降のすべての文字を無視し、その時点までに構文解析した整数値返します。
+  */
+  const hours = parseInt(matches[1] || 0, 10);
+  const minutes = parseInt(matches[2] || 0, 10);
+  const seconds = parseInt(matches[3] || 0, 10);
 
   return (hours * 60 * 60) + (minutes * 60) + seconds;
 }
